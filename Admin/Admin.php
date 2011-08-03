@@ -84,11 +84,6 @@ abstract class Admin implements AdminInterface, DomainObjectInterface
     protected $formFieldDescriptions = array();
 
     /**
-     * @var DatagridInterface
-     */
-    private $filter;
-
-    /**
      * The filter FieldDescription constructed from the configureFilterField method
      *
      * @var array
@@ -357,7 +352,6 @@ abstract class Admin implements AdminInterface, DomainObjectInterface
      */
     protected function configureListFields(ListMapper $list)
     {
-
     }
 
     /**
@@ -366,16 +360,14 @@ abstract class Admin implements AdminInterface, DomainObjectInterface
      */
     protected function configureDatagridFilters(DatagridMapper $filter)
     {
-
     }
 
     /**
      *
-     * @param DatagridMapper
+     * @param ShowMapper
      */
     protected function configureShowField(ShowMapper $filter)
     {
-
     }
 
     /**
@@ -385,17 +377,14 @@ abstract class Admin implements AdminInterface, DomainObjectInterface
      */
     public function configureRoutes(RouteCollection $collection)
     {
-
     }
 
     public function configureSideMenu(MenuItem $menu, $action, Admin $childAdmin = null)
     {
-
     }
 
     public function validate(ErrorElement $errorElement, $object)
     {
-
     }
 
     /**
@@ -444,32 +433,26 @@ abstract class Admin implements AdminInterface, DomainObjectInterface
 
     public function preUpdate($object)
     {
-
     }
 
     public function postUpdate($object)
     {
-
     }
 
     public function prePersist($object)
     {
-
     }
 
     public function postPersist($object)
     {
-
     }
 
     public function preRemove($object)
     {
-
     }
 
     public function postRemove($object)
     {
-
     }
 
     /**
@@ -1869,6 +1852,8 @@ abstract class Admin implements AdminInterface, DomainObjectInterface
     }
 
     /**
+     * Returns the currently used model manager.
+     * 
      * @return \Sonata\AdminBundle\Model\ModelManagerInterface
      */
     public function getModelManager()
@@ -1876,6 +1861,12 @@ abstract class Admin implements AdminInterface, DomainObjectInterface
         return $this->modelManager;
     }
 
+    /**
+     * Defines a model manager to use.
+     * 
+     * @param  ModelManagerInterface $modelManager 
+     * @return void
+     */
     public function setModelManager(ModelManagerInterface $modelManager)
     {
         $this->modelManager = $modelManager;
@@ -1961,11 +1952,22 @@ abstract class Admin implements AdminInterface, DomainObjectInterface
         return $this->show;
     }
 
-    public function setFormTheme(array $formTheme)
+    /**
+     * Defines a theme or an array of themes to use for the forms.
+     * 
+     * @param string|array $formTheme
+     * @return void
+     */
+    public function setFormTheme($formTheme)
     {
-        $this->formTheme = $formTheme;
+        $this->formTheme = (array) $formTheme;
     }
 
+    /**
+     * Returns an array of themes to use for the forms.
+     * 
+     * @return array
+     */
     public function getFormTheme()
     {
         return $this->formTheme;

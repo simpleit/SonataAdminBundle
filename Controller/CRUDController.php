@@ -18,6 +18,15 @@ use Symfony\Component\Security\Core\Exception\AccessDeniedException;
 use Symfony\Component\DependencyInjection\ContainerInterface;
 use Symfony\Bundle\FrameworkBundle\Controller\Controller;
 
+/**
+ * Controller handling CRUD actions including :
+ *   - create a new object
+ *   - update an object 
+ *   - delete an object
+ *   - show an object
+ *   - batch actions (batch delete is supported by default)
+ *   - list all objects (with filters and pagination)
+ */
 class CRUDController extends Controller
 {
     /**
@@ -28,40 +37,7 @@ class CRUDController extends Controller
     protected $admin;
 
     /**
-     * @param mixed $data
-     * @param integer $status
-     * @param array $headers
-     *
-     * @return Response with json encoded data
-     */
-    public function renderJson($data, $status = 200, $headers = array())
-    {
-        // fake content-type so browser does not show the download popup when this
-        // response is rendered through an iframe (used by the jquery.form.js plugin)
-        //  => don't know yet if it is the best solution
-        if ($this->get('request')->get('_xml_http_request')
-           && strpos($this->get('request')->headers->get('Content-Type'), 'multipart/form-data') === 0) {
-            $headers['Content-Type'] = 'text/plain';
-        } else {
-            $headers['Content-Type'] = 'application/json';
-        }
-
-        return new Response(json_encode($data), $status, $headers);
-    }
-
-    /**
-     *
-     * @return boolean true if the request is done by an ajax like query
-     */
-    public function isXmlHttpRequest()
-    {
-        return $this->get('request')->isXmlHttpRequest() || $this->get('request')->get('_xml_http_request');
-    }
-
-    /**
-     * Sets the Container associated with this Controller.
-     *
-     * @param ContainerInterface $container A ContainerInterface instance
+     * {@inheritdoc}
      */
     public function setContainer(ContainerInterface $container = null)
     {
@@ -71,23 +47,23 @@ class CRUDController extends Controller
     }
 
     /**
-     * Contextualize the admin class depends on the current request
+     * Contextualize the admin class depending on the current request
      *
      * @throws \RuntimeException
      * @return void
      */
-    public function configure()
+    protected function configure()
     {
-        $adminCode = $this->container->get('request')->get('_sonata_admin');
+        $adminCode = $this->get('request')->get('_sonata_admin');
 
         if (!$adminCode) {
-            throw new \RuntimeException(sprintf('There is no `_sonata_admin` defined for the controller `%s` and the current route `%s`', get_class($this), $this->container->get('request')->get('_route')));
+            throw new \RuntimeException(sprintf('There is no `_sonata_admin` defined for the controller `%s` and the current route `%s`', get_class($this), $this->get('request')->get('_route')));
         }
 
-        $this->admin = $this->container->get('sonata.admin.pool')->getAdminByAdminCode($adminCode);
+        $this->admin = $this->get('sonata.admin.pool')->getAdminByAdminCode($adminCode);
 
         if (!$this->admin) {
-            throw new \RuntimeException(sprintf('Unable to find the admin class related to the current controller (%s)', get_class($this)));
+            throw new \RuntimeException(sprintf('Unable to find the admin class related to the current controller "%s"', get_class($this)));
         }
 
         $rootAdmin = $this->admin;
@@ -97,26 +73,13 @@ class CRUDController extends Controller
             $rootAdmin = $rootAdmin->getParent();
         }
 
-        $rootAdmin->setRequest($this->container->get('request'));
+        $rootAdmin->setRequest($this->get('request'));
     }
 
     /**
-     * return the base template name
+     * Displays a list of objects with filters and pagination.
      *
-     * @return string the template name
-     */
-    public function getBaseTemplate()
-    {
-        if ($this->isXmlHttpRequest()) {
-            return $this->container->getParameter('sonata.admin.templates.ajax');
-        }
-
-        return $this->container->getParameter('sonata.admin.templates.layout');
-    }
-
-    /**
-     * return the Response object associated to the list action
-     *
+     * @throws AccessDeniedException if not allowed
      * @return Response
      */
     public function listAction()
@@ -133,25 +96,13 @@ class CRUDController extends Controller
     }
 
     /**
-     * execute a batch delete
-     *
-     * @param array $idx
-     * @return \Symfony\Component\HttpFoundation\RedirectResponse
+     * Displays the form to delete an object and deletes it if requested.
+     * 
+     * @throws NotFoundHttpException if object was not found
+     * @throws AccessDeniedException if not allowed
+     * @param integer $id the object primary key
+     * @return RedirectResponse 
      */
-    public function batchActionDelete($query)
-    {
-        if (false === $this->admin->isGranted('DELETE')) {
-            throw new AccessDeniedException();
-        }
-
-        $modelManager = $this->admin->getModelManager();
-        $modelManager->batchDelete($this->admin->getClass(), $query);
-        $this->get('session')->setFlash('sonata_flash_success', 'flash_batch_delete_success');
-
-
-        return new RedirectResponse($this->admin->generateUrl('list', $this->admin->getFilterParameters()));
-    }
-
     public function deleteAction($id)
     {
         if (false === $this->admin->isGranted('DELETE')) {
@@ -162,7 +113,7 @@ class CRUDController extends Controller
         $object = $this->admin->getObject($id);
 
         if (!$object) {
-            throw new NotFoundHttpException(sprintf('unable to find the object with id : %s', $id));
+            throw new NotFoundHttpException(sprintf('Unable to find the object "%s" with primary key "%s"', $admin->getClass(), $id));
         }
 
         $this->admin->delete($object);
@@ -171,10 +122,11 @@ class CRUDController extends Controller
     }
 
     /**
-     * return the Response object associated to the edit action
+     * Displays the form to edit an object and updates it if requested.
      *
-     * @throws \Symfony\Component\HttpKernel\Exception\NotFoundHttpException
-     * @param  $id
+     * @throws NotFoundHttpException if object was not found
+     * @throws AccessDeniedException if not allowed
+     * @param  $id the object primary key
      * @return \Symfony\Component\HttpFoundation\Response
      */
     public function editAction($id)
@@ -186,11 +138,10 @@ class CRUDController extends Controller
         $object = $this->admin->getObject($this->get('request')->get($this->admin->getIdParameter()));
 
         if (!$object) {
-            throw new NotFoundHttpException(sprintf('unable to find the object with id : %s', $id));
+            throw new NotFoundHttpException(sprintf('Unable to find the object "%s" with primary key "%s"', $admin->getClass(), $id));
         }
 
         $this->admin->setSubject($object);
-
         $form = $this->admin->getForm();
         $form->setData($object);
 
@@ -208,7 +159,6 @@ class CRUDController extends Controller
                     ));
                 }
 
-                // redirect to edit mode
                 return $this->redirectTo($object);
             }
             $this->get('session')->setFlash('sonata_flash_error', 'flash_edit_error');
@@ -227,84 +177,45 @@ class CRUDController extends Controller
             'base_template'  => $this->getBaseTemplate(),
         ));
     }
-
+    
     /**
-     * redirect the user depend on this choice
+     * return the Response object associated to the view action
      *
-     * @param  $object
+     * @throws NotFoundHttpException if object was not found
+     * @throws AccessDeniedException if not allowed
+     * @param  $id the object primary key
      * @return \Symfony\Component\HttpFoundation\Response
      */
-    public function redirectTo($object)
+    public function showAction($id)
     {
-        $url = false;
-
-        if ($this->get('request')->get('btn_update_and_list')) {
-            $url = $this->admin->generateUrl('list');
+        if (false === $this->admin->isGranted('SHOW')) {
+            throw new AccessDeniedException();
         }
 
-        if ($this->get('request')->get('btn_create_and_create')) {
-            $url = $this->admin->generateUrl('create');
+        $object = $this->admin->getObject($this->get('request')->get($this->admin->getIdParameter()));
+
+        if (!$object) {
+            throw new NotFoundHttpException(sprintf('Unable to find the object "%s" with primary key "%s"', $admin->getClass(), $id));
         }
 
-        if (!$url) {
-            $url = $this->admin->generateUrl('edit', array(
-                'id' => $this->admin->getNormalizedIdentifier($object),
-            ));
-        }
+        $this->admin->setSubject($object);
 
-        return new RedirectResponse($url);
-    }
+        // build the show list
+        $elements = $this->admin->getShow();
 
-    /**
-     * return the Response object associated to the batch action
-     *
-     * @throws \RuntimeException
-     * @return \Symfony\Component\HttpFoundation\Response
-     */
-    public function batchAction()
-    {
-        if ($this->get('request')->getMethod() != 'POST') {
-           throw new \RuntimeException('invalid request type, POST expected');
-        }
-
-        $action       = $this->get('request')->get('action');
-        $idx          = $this->get('request')->get('idx');
-        $all_elements = $this->get('request')->get('all_elements', false);
-
-        if (count($idx) == 0 && !$all_elements) { // no item selected
-            $this->get('session')->setFlash('sonata_flash_notice', 'flash_batch_empty');
-
-            return new RedirectResponse($this->admin->generateUrl('list', $this->admin->getFilterParameters()));
-        }
-
-        if (!array_key_exists($action, $this->admin->getBatchActions())) {
-            throw new \RuntimeException(sprintf('The `%s` batch action is not defined', $action));
-        }
-
-        // execute the action, batchActionXxxxx
-        $action = \Sonata\AdminBundle\Admin\BaseFieldDescription::camelize($action);
-
-        $final_action = sprintf('batchAction%s', ucfirst($action));
-        if (!method_exists($this, $final_action)) {
-            throw new \RuntimeException(sprintf('A `%s::%s` method must be created', get_class($this), $final_action));
-        }
-
-        $datagrid = $this->admin->getDatagrid();
-        $datagrid->buildPager();
-        $query = $datagrid->getQuery();
-
-        $query->setFirstResult(null);
-        $query->setMaxResults(null);
-
-        if (count($idx) > 0) {
-            $this->admin->getModelManager()->addIdentifiersToQuery($this->admin->getClass(), $query, $idx);
-        }
-        return call_user_func(array($this, $final_action), $query);
+        return $this->render($this->admin->getShowTemplate(), array(
+            'action'         => 'show',
+            'object'         => $object,
+            'elements'       => $this->admin->getShow(),
+            'admin'          => $this->admin,
+            'base_template'  => $this->getBaseTemplate(),
+        ));
     }
 
     /**
      * return the Response object associated to the create action
      *
+     * @throws AccessDeniedException if not allowed
      * @return \Symfony\Component\HttpFoundation\Response
      */
     public function createAction()
@@ -333,7 +244,7 @@ class CRUDController extends Controller
                     ));
                 }
                 $this->get('session')->setFlash('sonata_flash_success','flash_create_success');
-                // redirect to edit mode
+                
                 return $this->redirectTo($object);
             }
             $this->get('session')->setFlash('sonata_flash_error', 'flash_create_error');
@@ -352,35 +263,150 @@ class CRUDController extends Controller
             'base_template' => $this->getBaseTemplate(),
         ));
     }
-
+    
     /**
-     * return the Response object associated to the view action
+     * return the Response object associated to the batch action
      *
+     * @throws \RuntimeException
      * @return \Symfony\Component\HttpFoundation\Response
      */
-    public function showAction($id)
+    public function batchAction()
     {
-        if (false === $this->admin->isGranted('SHOW')) {
+        if ($this->get('request')->getMethod() != 'POST') {
+           throw new \RuntimeException('invalid request type, POST expected');
+        }
+
+        $action       = $this->get('request')->get('action');
+        $idx          = $this->get('request')->get('idx');
+        $allElements  = $this->get('request')->get('all_elements', false);
+
+        if (count($idx) == 0 && !$allElements) { // no item selected
+            $this->get('session')->setFlash('sonata_flash_notice', 'flash_batch_empty');
+
+            return new RedirectResponse($this->admin->generateUrl('list', $this->admin->getFilterParameters()));
+        }
+
+        if (!array_key_exists($action, $this->admin->getBatchActions())) {
+            throw new \RuntimeException(sprintf('The `%s` batch action is not defined', $action));
+        }
+
+        // execute the action, batchActionXxxxx
+        $action = \Sonata\AdminBundle\Admin\BaseFieldDescription::camelize($action);
+
+        $finalAction = sprintf('batchAction%s', ucfirst($action));
+        if (!method_exists($this, $finalAction)) {
+            throw new \RuntimeException(sprintf('A `%s::%s` method must be created to execute batch action "%s"', get_class($this), $finalAction, $action));
+        }
+
+        $datagrid = $this->admin->getDatagrid();
+        $datagrid->buildPager();
+        $query = $datagrid->getQuery();
+
+        $query->setFirstResult(null);
+        $query->setMaxResults(null);
+
+        if (count($idx) > 0) {
+            $this->admin->getModelManager()->addIdentifiersToQuery($this->admin->getClass(), $query, $idx);
+        }
+        
+        return $this->$finalAction($query);
+    }
+    
+    /**
+     * execute a batch delete
+     *
+     * @throws AccessDeniedException if not allowed
+     * @param type $query
+     * @return \Symfony\Component\HttpFoundation\RedirectResponse
+     */
+    protected function batchActionDelete($query)
+    {
+        if (false === $this->admin->isGranted('DELETE')) {
             throw new AccessDeniedException();
         }
 
-        $object = $this->admin->getObject($this->get('request')->get($this->admin->getIdParameter()));
+        $modelManager = $this->admin->getModelManager();
+        $modelManager->batchDelete($this->admin->getClass(), $query);
+        $this->get('session')->setFlash('sonata_flash_success', 'flash_batch_delete_success');
 
-        if (!$object) {
-            throw new NotFoundHttpException(sprintf('unable to find the object with id : %s', $id));
+
+        return new RedirectResponse($this->admin->generateUrl('list', $this->admin->getFilterParameters()));
+    }
+    
+    /**
+     * Renders data in a JSON format.
+     * 
+     * @param mixed $data data to render
+     * @param integer $status status code, 200 by default
+     * @param array $headers additional heades
+     *
+     * @return Response with json encoded data
+     */
+    protected function renderJson($data, $status = 200, $headers = array())
+    {
+        // fake content-type so browser does not show the download popup when this
+        // response is rendered through an iframe (used by the jquery.form.js plugin)
+        //  => don't know yet if it is the best solution
+        if ($this->get('request')->get('_xml_http_request')
+           && strpos($this->get('request')->headers->get('Content-Type'), 'multipart/form-data') === 0) {
+            $headers['Content-Type'] = 'text/plain';
+        } else {
+            $headers['Content-Type'] = 'application/json';
         }
 
-        $this->admin->setSubject($object);
+        return new Response(json_encode($data), $status, $headers);
+    }
 
-        // build the show list
-        $elements = $this->admin->getShow();
+    /**
+     * Checks if the current request is asynchronous or like it.
+     * 
+     * @return boolean true if the request is done by an ajax like query
+     */
+    protected function isXmlHttpRequest()
+    {
+        return $this->get('request')->isXmlHttpRequest() || $this->get('request')->get('_xml_http_request');
+    }
+    
+    /**
+     * Returns the base template (ie layout) to use depending of the type of 
+     * request (XmlHttpRequest or not) and the DIC configuration.
+     * 
+     * @return string
+     */
+    protected function getBaseTemplate()
+    {
+        if ($this->isXmlHttpRequest()) {
+            return $this->container->getParameter('sonata.admin.templates.ajax');
+        }
 
-        return $this->render($this->admin->getShowTemplate(), array(
-            'action'         => 'show',
-            'object'         => $object,
-            'elements'       => $this->admin->getShow(),
-            'admin'          => $this->admin,
-            'base_template'  => $this->getBaseTemplate(),
-        ));
+        return $this->container->getParameter('sonata.admin.templates.layout');
+    }
+    
+    /**
+     * Redirects the user depending on the button which has been clocked after 
+     * creating or updating on an object.
+     *
+     * @param  object $object object which has been created or updated
+     * @return \Symfony\Component\HttpFoundation\Response
+     */
+    protected function redirectTo($object)
+    {
+        $url = false;
+
+        if ($this->get('request')->get('btn_update_and_list')) {
+            $url = $this->admin->generateUrl('list');
+        }
+
+        if ($this->get('request')->get('btn_create_and_create')) {
+            $url = $this->admin->generateUrl('create');
+        }
+
+        if (!$url) {
+            $url = $this->admin->generateUrl('edit', array(
+                'id' => $this->admin->getNormalizedIdentifier($object),
+            ));
+        }
+
+        return new RedirectResponse($url);
     }
 }
